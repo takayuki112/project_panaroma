@@ -4,6 +4,9 @@ import numpy as np
 # Load images
 left = cv2.imread('data/input_fragments/room7.jpeg')
 right = cv2.imread('data/input_fragments/room6.jpeg')
+
+left = cv2.imread('data/hostel_room_sequence/1room.jpeg')
+right = cv2.imread('data/hostel_room_sequence/2room.jpeg')
 # target = cv2.imread('data/targets/output.png')
 
 # scale_factor_target = 0.5
@@ -25,6 +28,7 @@ gray_right = cv2.cvtColor(right, cv2.COLOR_BGR2GRAY)
 
 # Initialize SIFT detector
 sift = cv2.SIFT_create()
+sift = cv2.ORB_create()
 
 # Detect keypoints and compute descriptors
 keypoints_left, descriptors_left = sift.detectAndCompute(gray_left, None)
