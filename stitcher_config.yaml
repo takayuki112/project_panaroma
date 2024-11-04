@@ -1,0 +1,29 @@
+input_dir: "data/stitch_test1"
+output_dir: "data/outputs"
+feature_detector_algo: "SIFT"
+matcher_type: "BF"
+plot: true
+
+# SIFT Parameters
+sift:
+  nfeatures: 0
+  nOctaveLayers: 3
+  contrastThreshold: 0.04
+  edgeThreshold: 10
+  sigma: 1.6
+
+# ORB Parameters
+orb:
+  nfeatures: 2000
+  scaleFactor: 1.2
+  nlevels: 8
+  edgeThreshold: 31
+  firstLevel: 0
+  WTA_K: 2
+  scoreType: "ORB_HARRIS_SCORE"  # Use "ORB_HARRIS_SCORE" or "ORB_FAST_SCORE"
+  patchSize: 31
+  fastThreshold: 20
+
+# Hyperparameters
+ratio_test_threshold: 0.5
+ransac_threshold: 5.0
