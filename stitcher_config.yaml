@@ -14,7 +14,7 @@ sift:
 
 # ORB Parameters
 orb:
-  nfeatures: 2000
+  nfeatures: 0
   scaleFactor: 1.2
   nlevels: 8
   edgeThreshold: 31
