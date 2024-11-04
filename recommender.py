@@ -1,4 +1,7 @@
 import numpy as np
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 from Stitcher import Stitcher
 
@@ -34,7 +37,7 @@ class HierarchicalClustering:
             # Merge clusters x and y
             self.clusters[x].extend(self.clusters[y])
             del self.clusters[y]
-            print(f"Merged clusters {x} and {y}, new cluster: {self.clusters[x]}")
+            logging.info(f"Merged clusters {x} and {y}, new cluster: {self.clusters[x]}")
         return self.clusters
 
     def _cluster_distance(self, cluster1, cluster2):
@@ -83,13 +86,20 @@ class StitcherWithRecommender(Stitcher):
 
 # Assuming `stitcher` is an instance of the Stitcher class
 stitcher = StitcherWithRecommender(
-    input_dir="data/hostel_room_sequence",
-    output_dir="data/outputs",
+    input_dir="data/gallery_of_3s",
+    output_dir="data/gallery_of_3s_outputs",
     feature_detector="SIFT",
     matcher_type="BF",
     plot=True,
 )
+# stitcher = StitcherWithRecommender(
+#     input_dir="data/hostel_room_sequence",
+#     output_dir="data/outputs",
+#     feature_detector="SIFT",
+#     matcher_type="BF",
+#     plot=True,
+# )
 stitcher.read_input_dir()
 stitcher.detect_keypoints_and_descriptors()
-recommended_image_groups = stitcher.recommend_images(num_clusters=2)
+recommended_image_groups = stitcher.recommend_images(num_clusters=len(stitcher.input_images) // 3)
 stitcher.stitch_recommended_images(recommended_image_groups)
