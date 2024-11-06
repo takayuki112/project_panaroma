@@ -3,7 +3,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-from Stitcher import Stitcher
+from project_panaroma import Stitcher
 
 
 class HierarchicalClustering:
