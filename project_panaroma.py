@@ -7,10 +7,10 @@ import matplotlib.pyplot as plt
 
 class Stitcher():
     def __init__(self, initial_config_path = 'stitcher_config.yaml'):
-        
+
         with open(initial_config_path, "r") as file:
             initial_config = yaml.safe_load(file)
-        
+
         # General configuration
         self.input_dir = initial_config["input_dir"]
         self.output_dir = initial_config["output_dir"]
@@ -39,50 +39,46 @@ class Stitcher():
         self.orb_edgeThreshold = orb_config.get("edgeThreshold", 31)
         self.orb_firstLevel = orb_config.get("firstLevel", 0)
         self.orb_WTA_K = orb_config.get("WTA_K", 2)
-        
+
         self.orb_scoreType = (cv2.ORB_HARRIS_SCORE 
                               if orb_config.get("scoreType") == "ORB_HARRIS_SCORE" 
                               else cv2.ORB_FAST_SCORE)
-        
+
         self.orb_patchSize = orb_config.get("patchSize", 31)
         self.orb_fastThreshold = orb_config.get("fastThreshold", 20)
-        
+
         # Matcher-specific parameters
         self.bf_config = initial_config.get("bf", {"norm_type": "NORM_L2", "crossCheck": False})
         self.flann_config = initial_config.get("flann", {"algorithm": 1, "trees": 5, "checks": 50})
 
-
-        
-
     def read_input_dir(self, right_to_left=False):
-        
+
         self.input_images = []
-        
+
         image_extensions = {".jpeg", ".jpg", ".png"}
-        
+
         # Filter and sort files by numeric prefix
         files = [f for f in os.listdir(self.input_dir) if os.path.splitext(f)[1].lower() in image_extensions]
         files.sort(key=lambda f: int(re.match(r'(\d+)', f).group()))
         if right_to_left:
             files = files[::-1]
-        
+
         for file in files:
             img = cv2.imread(os.path.join(self.input_dir, file))
             if img is not None:
                 self.input_images.append(img)
             else:
                 print(f"Could not read image {file} in {self.input_dir}")
-        
+
         if len(self.input_images) < 2:
             raise ValueError("Not enough images in the input directory.")
         else:
             print(f"Found {len(self.input_images)} images in the input directory.")
-            
-    
+
     ## FEATURE DETECTION AND DESCRIPTION
-            
+
     def detect_keypoints_and_descriptors(self, custom_input_image = None):
-        
+
         # Initialize the specified Feature Detector
         if self.feature_detector_algo == "SIFT":
             self.feature_detector = cv2.SIFT_create(
@@ -106,39 +102,37 @@ class Stitcher():
             )
         else:
             raise ValueError("Invalid feature detector. Use 'SIFT' or 'ORB'.")
-        
+
         if custom_input_image is not None:
             img = custom_input_image
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             keypoints, descriptors = self.feature_detector.detectAndCompute(gray, None)
-            
+
             print(f"Detected {len(keypoints)} keypoints in image using {self.feature_detector_algo}.")
-            
+
             if self.plot:
                 self.plot_features(img, keypoints, title=f"Keypoints in Image")
-            
+
             return keypoints, descriptors
-                    
-        
+
         # Detect keypoints and compute descriptors for each image in the specified input folder
         self.feature_points_and_descriptors = []
-        
+
         for i, img in enumerate(self.input_images):
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             keypoints, descriptors = self.feature_detector.detectAndCompute(gray, None)
-            
+
             if keypoints is not None and descriptors is not None:
                 self.feature_points_and_descriptors.append((keypoints, descriptors))
                 print(f"Detected {len(keypoints)} keypoints in image {i+1} using {self.feature_detector_algo}.")
-                
+
                 if self.plot:
                     self.plot_features(img, keypoints, title=f"Keypoints in Image {i+1}")
             else:
                 print(f"Failed to detect keypoints in image {i+1}")
-                
+
         print("Feature detection completed.")
-        
-    
+
     def plot_features(self, img, keypoints, title="Detected Keypoints"):
         img_with_keypoints = cv2.drawKeypoints(img, keypoints, None, flags=cv2.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
         plt.figure(figsize=(10, 7))
@@ -146,7 +140,7 @@ class Stitcher():
         plt.title(title)
         plt.axis("off")
         plt.show()
-        
+
     def sift_vs_orb(self, img, default=False):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         # Initialize SIFT with current configuration
@@ -159,7 +153,7 @@ class Stitcher():
         )
         if default:
             sift = cv2.SIFT_create()
-        
+
         # Detect SIFT keypoints and descriptors
         sift_keypoints, _ = sift.detectAndCompute(gray, None)
         img_sift = cv2.drawKeypoints(img, sift_keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -178,7 +172,7 @@ class Stitcher():
         )
         if default:
             orb = cv2.ORB_create()
-        
+
         # Detect ORB keypoints and descriptors
         orb_keypoints, _ = orb.detectAndCompute(gray, None)
         img_orb = cv2.drawKeypoints(img, orb_keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
@@ -189,20 +183,20 @@ class Stitcher():
         plt.imshow(cv2.cvtColor(img_sift, cv2.COLOR_BGR2RGB))
         plt.title("SIFT Keypoints")
         plt.axis('off')
-        
+
         plt.subplot(1, 2, 2)
         plt.imshow(cv2.cvtColor(img_orb, cv2.COLOR_BGR2RGB))
         plt.title("ORB Keypoints")
         plt.axis('off')
-        
+
         plt.show()
-        
+
         print(f"Detected {len(sift_keypoints)} SIFT keypoints and {len(orb_keypoints)} ORB keypoints.")
-        
+
     def sift_vs_orb_features(self, default=False):
         for i, img in enumerate(self.input_images):
             self.sift_vs_orb(img, default=default)
-    
+
     def print_feature_detector_config(self):
         print(f"Current Feature Detector: {self.feature_detector_algo}")
         print(f"\nSIFT Configuration: \n"
@@ -211,7 +205,7 @@ class Stitcher():
                 f"contrastThreshold:\t {self.sift_contrastThreshold}\n",
                 f"edgeThreshold:\t\t {self.sift_edgeThreshold}\n",
                 f"sigma:\t\t\t {self.sift_sigma}\n")
-        
+
         print(f"ORB Configuration: \n",
                 f"nfeatures:\t\t {self.orb_nfeatures}\n",
                 f"scaleFactor:\t\t {self.orb_scaleFactor}\n",
@@ -222,10 +216,9 @@ class Stitcher():
                 f"scoreType:\t\t {self.orb_scoreType}\n",
                 f"patchSize:\t\t {self.orb_patchSize}\n",
                 f"fastThreshold:\t\t {self.orb_fastThreshold}\n")
-    
-    
-    ## FEATURE MATCHING 
-    
+
+    ## FEATURE MATCHING
+
     def match_features(self, descriptors1, descriptors2):
         # Initialize matcher based on configuration
         if self.matcher_type == "BF":
@@ -263,8 +256,13 @@ class Stitcher():
         matches = self.matcher.knnMatch(descriptors1, descriptors2, k=2)
         return matches
 
+    def match_features_call(self, descriptors1, descriptors2):
+        self.matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=False)
+        matches = self.matcher.knnMatch(descriptors1, descriptors2, k=2)
+        good_matches = [m for m, n in matches if m.distance < 0.75 * n.distance]
+        print(f"Found {len(good_matches)} good matches after ratio test.")
+        return good_matches
 
-    
     def ratio_test(self, matches):
         good_matches = [m for m, n in matches if m.distance < self.ratio_test_threshold * n.distance]
         return good_matches
@@ -272,11 +270,11 @@ class Stitcher():
     def ransac_homography(self, kp1, kp2, good_matches):
         points1 = np.float32([kp1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
         points2 = np.float32([kp2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-        
+
         H, mask = cv2.findHomography(points2, points1, cv2.RANSAC, self.ransac_threshold)
-        
+
         inliers = [good_matches[i] for i in range(len(good_matches)) if mask[i]]
-        
+
         return H, inliers
 
     def plot_matches(self, img1, img2, kp1, kp2, matches):
@@ -286,27 +284,26 @@ class Stitcher():
         plt.title("Feature Matches")
         plt.axis("off")
         plt.show()
-        
+
         print(f"Found {len(matches)} matches.")
 
     def match_two_images(self, img1, img2, kp1, des1, kp2, des2, ransac = True):
         good_matches = self.match_features(des1, des2)
         good_matches = self.ratio_test(good_matches)
-        
+
         if self.plot:
             self.plot_matches(img1, img2, kp1, kp2, good_matches)
-        
-        
+
         if ransac:
             H, inliers = self.ransac_homography(kp1, kp2, good_matches)
-            
+
             if H is None:
                 print("ERROR: Failed to find homography matrix.")
             elif self.plot:
                 self.plot_matches(img1, img2, kp1, kp2, inliers)
-            
+
             print(f"Found {len(inliers)} inliers after RANSAC.")
-    
+
     def see_all_matches(self, ransac=True):
         for i in range(len(self.input_images) - 1):
             img1 = self.input_images[i]
@@ -314,13 +311,11 @@ class Stitcher():
             kp1, des1 = self.feature_points_and_descriptors[i]
             kp2, des2 = self.feature_points_and_descriptors[i + 1]
             self.match_two_images(img1, img2, kp1, des1, kp2, des2, ransac=False)
-            
-              
 
     ## IMAGE ALIGNMENT AND STITCHING
-    
+
     def warp_and_stitch(self, base_img, warp_img, H, backward_warp=True):
-        
+
         h1, w1 = base_img.shape[:2]
         h2, w2 = warp_img.shape[:2]
 
@@ -348,7 +343,6 @@ class Stitcher():
         else:
             result_img = cv2.warpPerspective(warp_img, translation_matrix @ H, (x_max - x_min, y_max - y_min))
             result_img[translation_dist[1]:h1 + translation_dist[1], translation_dist[0]:w1 + translation_dist[0]] = base_img
-            
 
         if self.plot:
             plt.figure(figsize=(15, 10))
@@ -359,11 +353,10 @@ class Stitcher():
 
         return result_img
 
-
     def stitch_all_images(self):
         if not hasattr(self, 'feature_points_and_descriptors'):
             raise ValueError("Feature points and descriptors are missing. Run detect_keypoints_and_descriptors() first.")
-        
+
         # Start with the first image
         stitched_img = self.input_images[0]
 
@@ -372,15 +365,15 @@ class Stitcher():
             img2 = self.input_images[i + 1]
             kp1, des1 = self.feature_points_and_descriptors[i]
             kp2, des2 = self.feature_points_and_descriptors[i + 1]
-            
+
             matches = self.match_features(des1, des2)
-            
+
             good_matches = self.ratio_test(matches)
-            
+
             H, inliers = self.ransac_homography(kp1, kp2, good_matches)
-            
+
             stitched_img = self.warp_and_stitch(img1, img2, H)
-        
+
         if self.plot:
             plt.figure(figsize=(18, 18))
             plt.imshow(cv2.cvtColor(stitched_img, cv2.COLOR_BGR2RGB))
@@ -388,11 +381,11 @@ class Stitcher():
             plt.axis("off")
             plt.show()
         return stitched_img
-    
+
     def stitch_consecutive_images(self):
         if not hasattr(self, 'feature_points_and_descriptors'):
             raise ValueError("Feature points and descriptors are missing. Run detect_keypoints_and_descriptors() first.")
-        
+
         stitched_img = self.input_images[0]
 
         for i in range(len(self.input_images) - 1):
@@ -400,15 +393,15 @@ class Stitcher():
             img2 = self.input_images[i + 1]
             kp1, des1 = self.feature_points_and_descriptors[i]
             kp2, des2 = self.feature_points_and_descriptors[i + 1]
-            
+
             matches = self.match_features(des1, des2)
-            
+
             good_matches = self.ratio_test(matches)
-            
+
             H, inliers = self.ransac_homography(kp1, kp2, good_matches)
-            
+
             stitched_img = self.warp_and_stitch(img1, img2, H)
-        
+
         if self.plot:
             plt.figure(figsize=(18, 18))
             plt.imshow(cv2.cvtColor(stitched_img, cv2.COLOR_BGR2RGB))
@@ -416,7 +409,7 @@ class Stitcher():
             plt.axis("off")
             plt.show()
         return stitched_img
-    
+
     def stitch3(self):
         '''
         Run self.read_input_dir() & self.detect_keypoints_and_descriptors(custom_input_img = None) before calling this method
@@ -460,97 +453,94 @@ class Stitcher():
             plt.title("Stitched Image")
             plt.axis("off")
             plt.show()
-            
+
         cv2.imwrite(os.path.join(self.output_dir, "stitched_image.jpg"), stitched_image)
         print(f"Preprocessed Stitched image saved to {self.output_dir}")
-        
+
         return stitched_image
-    
-    ## POST-PROCESSING 
-    
+
+    ## POST-PROCESSING
+
     def color_correct(self, source, template):
         source_lab = cv2.cvtColor(source, cv2.COLOR_BGR2LAB)
         template_lab = cv2.cvtColor(template, cv2.COLOR_BGR2LAB)
-        
+
         # Split the LAB channels
         l_source, a_source, b_source = cv2.split(source_lab)
         l_template, a_template, b_template = cv2.split(template_lab)
-        
+
         # Apply histogram equalization only to the L channel
         l_source_equalized = cv2.equalizeHist(l_source)
-        
+
         # Merge the equalized L channel with the original A and B channels
         matched = cv2.merge((l_source_equalized, a_source, b_source))
-        
+
         # Convert back to BGR color space
         corrected_image = cv2.cvtColor(matched, cv2.COLOR_LAB2BGR)
         return corrected_image
 
-    
     def apply_clahe(self, image):
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        
+
         # Apply CLAHE to the L channel
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         l = clahe.apply(l)
-        
+
         # Merge the CLAHE enhanced L channel back with a and b channels
         lab = cv2.merge((l, a, b))
         corrected = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
         return corrected
 
-
     def crop_black_regions(self, image, black_chunk_ratio=0.2):
         # Convert the image to grayscale for easier black region detection
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
+
         # Define the threshold for considering a pixel "black" (e.g., pixel intensity < 10)
         black_pixel_threshold = 10
-        
+
         # Calculate the number of consecutive black pixels required
         min_black_chunk_length = int(gray.shape[1] * black_chunk_ratio)
-        
+
         # Find rows that contain fewer than the threshold of consecutive black pixels
         non_black_rows = []
         for i in range(gray.shape[0]):
             row = gray[i, :]
             black_streaks = 0
             max_black_streak = 0
-            
+
             for pixel in row:
                 if pixel < black_pixel_threshold:
                     black_streaks += 1
                 else:
                     max_black_streak = max(max_black_streak, black_streaks)
                     black_streaks = 0
-            
+
             # Update max streak at end of row if streak continues to end
             max_black_streak = max(max_black_streak, black_streaks)
-            
+
             # Add row to non-black rows if black streak is below threshold
             if max_black_streak < min_black_chunk_length:
                 non_black_rows.append(i)
-        
+
         # Determine cropping boundaries
         if non_black_rows:
             top_row = non_black_rows[0]
             bottom_row = non_black_rows[-1] + 1  # +1 to include the last valid row
-            
+
             # Crop the image
             cropped_image = image[top_row:bottom_row, :]
         else:
             cropped_image = image  # No significant black region found, return the original image
-        
+
         if self.plot:
             plt.figure(figsize=(10, 7))
             plt.imshow(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
             plt.title("Cropped Stitched Image")
             plt.axis("off")
             plt.show()
-        
-        return cropped_image
 
+        return cropped_image
 
     def stitch3_with_post(self, color_correct = True):
         """
@@ -577,7 +567,7 @@ class Stitcher():
         if color_correct:
             warped_img1 = self.color_correct(warped_img1, img2)
             warped_img1 = self.apply_clahe(warped_img1)
-        
+
         # Match features between img3 and img2
         matches32 = self.match_features(des3, des2)
         good_matches32 = self.ratio_test(matches32)
@@ -587,8 +577,7 @@ class Stitcher():
         if color_correct:
             warped_img3 = self.color_correct(warped_img3, warped_img1)
             warped_img3 = self.apply_clahe(warped_img3)
-        
-        
+
         # Detect and match features between the warped images for final blending
         kp_warped1, des_warped1 = self.detect_keypoints_and_descriptors(custom_input_image=warped_img1)
         kp_warped3, des_warped3 = self.detect_keypoints_and_descriptors(custom_input_image=warped_img3)
@@ -600,20 +589,16 @@ class Stitcher():
         stitched_image = self.warp_and_stitch(warped_img1, warped_img3, H_warped)
 
         stitched_image = self.crop_black_regions(stitched_image)
-        
+
         if self.plot:
             plt.figure(figsize=(18, 18))
             plt.imshow(cv2.cvtColor(stitched_image, cv2.COLOR_BGR2RGB))
             plt.title("Stitched Image")
             plt.axis("off")
             plt.show()
-            
+
         # Save the final stitched image
         cv2.imwrite(os.path.join(self.output_dir, "stitched_image.jpg"), stitched_image)
         print(f"Preprocessed Stitched image saved to {self.output_dir}")
-        
+
         return stitched_image
-    
-
-
-    

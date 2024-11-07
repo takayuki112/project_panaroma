@@ -1,9 +1,14 @@
-import numpy as np
 import logging
-
-logging.basicConfig(level=logging.INFO)
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.cluster.hierarchy import dendrogram, linkage
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from scipy.spatial.distance import squareform
 
 from project_panaroma import Stitcher
+
+logging.basicConfig(level=logging.INFO)
 
 
 class HierarchicalClustering:
@@ -37,7 +42,9 @@ class HierarchicalClustering:
             # Merge clusters x and y
             self.clusters[x].extend(self.clusters[y])
             del self.clusters[y]
-            logging.info(f"Merged clusters {x} and {y}, new cluster: {self.clusters[x]}")
+            logging.info(
+                f"Merged clusters {x} and {y}, new cluster: {self.clusters[x]}"
+            )
         return self.clusters
 
     def _cluster_distance(self, cluster1, cluster2):
@@ -55,7 +62,7 @@ class StitcherWithRecommender(Stitcher):
             kp1, des1 = self.feature_points_and_descriptors[i]
             for j in range(i + 1, num_images):
                 kp2, des2 = self.feature_points_and_descriptors[j]
-                good_matches = self.match_features(des1, des2)
+                good_matches = self.match_features_call(des1, des2)
                 similarity_score = len(good_matches)
                 similarity_matrix[i, j] = similarity_score
                 similarity_matrix[j, i] = similarity_score  # Symmetric matrix
@@ -65,8 +72,69 @@ class StitcherWithRecommender(Stitcher):
 
         return similarity_matrix
 
+    def generate_dendrogram(self, similarity_matrix):
+        # Convert the similarity matrix to a distance matrix
+        epsilon = 1e-5  # Small value to prevent division by zero
+        distance_matrix = 1 / (similarity_matrix + epsilon)
+        np.fill_diagonal(distance_matrix, 0)  # Ensure the diagonal is zero
+
+        # Convert the distance matrix to condensed form
+        condensed_distance = squareform(distance_matrix)
+
+        # Generate the linkage matrix using average linkage
+        linked = linkage(condensed_distance, method="average")
+
+        fig, ax = plt.subplots(figsize=(10, 7))
+        dendrogram_data = dendrogram(
+            linked,
+            labels=[f"Image {i+1}" for i in range(similarity_matrix.shape[0])],
+            ax=ax,
+        )
+        plt.title("Dendrogram of Image Similarities")
+        plt.xlabel("Images")
+        plt.ylabel("Distance")
+
+        # Load images and display them below the dendrogram
+        num_labels = len(dendrogram_data["ivl"])
+        image_height = 0.1  # Adjust as needed
+
+        # Get the x positions of the leaves
+        xlbls = ax.get_xticks()
+        xlbls = ax.get_xticks()
+
+        for i, label in enumerate(dendrogram_data["ivl"]):
+            image_index = int(label.split()[-1]) - 1
+            img = cv2.cvtColor(self.input_images[image_index], cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img, (50, 50))
+
+            # Get the x position of the label
+            x = xlbls[i]
+            y = 0  # y-position can be zero as we're only interested in x
+
+            # Transform x position from data to figure coordinates
+            trans = ax.transData.transform((x, y))
+            inv = fig.transFigure.inverted()
+            x_fig, y_fig = inv.transform(trans)
+
+            # Width of each image in figure coordinates
+            width = (
+                1 / num_labels * 0.8
+            )  # Adjust 0.8 to increase spacing between images
+            x_fig_centered = x_fig - width / 2
+
+            # Add new axes at the calculated position
+            img_ax = fig.add_axes(
+                [x_fig_centered, 0.01, width, image_height], anchor="S", zorder=1
+            )
+            img_ax.imshow(img)
+            img_ax.axis("off")
+
+        plt.subplots_adjust(bottom=0.3)  # Adjust to make space for images
+        plt.show()
+
     def recommend_images(self, num_clusters=1):
         similarity_matrix = self.compute_pairwise_similarities()
+        self.generate_dendrogram(similarity_matrix)  # dendrogram before clustering
         hc = HierarchicalClustering(similarity_matrix)
         clusters = hc.fit(num_clusters=num_clusters)
         recommendations = []
@@ -80,18 +148,15 @@ class StitcherWithRecommender(Stitcher):
             self.input_images = image_group
             self.feature_points_and_descriptors = []
             self.detect_keypoints_and_descriptors()
-            self.align_and_stitch_images()
+            self.stitch3_with_post()
             print(f"Stitched panorama for cluster {idx + 1} saved.")
 
 
 # Assuming `stitcher` is an instance of the Stitcher class
-stitcher = StitcherWithRecommender(
-    input_dir="data/gallery_of_3s",
-    output_dir="data/gallery_of_3s_outputs",
-    feature_detector="SIFT",
-    matcher_type="BF",
-    plot=True,
-)
+stitcher = StitcherWithRecommender()
+stitcher.input_dir = "data/gallery_of_3s"
+stitcher.output_dir = "data/gallery_of_3s_outputs"
+stitcher.plot = False
 # stitcher = StitcherWithRecommender(
 #     input_dir="data/hostel_room_sequence",
 #     output_dir="data/outputs",
@@ -101,5 +166,7 @@ stitcher = StitcherWithRecommender(
 # )
 stitcher.read_input_dir()
 stitcher.detect_keypoints_and_descriptors()
-recommended_image_groups = stitcher.recommend_images(num_clusters=len(stitcher.input_images) // 3)
+recommended_image_groups = stitcher.recommend_images(
+    num_clusters=len(stitcher.input_images) // 3
+)
 stitcher.stitch_recommended_images(recommended_image_groups)
