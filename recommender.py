@@ -1,9 +1,9 @@
 import logging
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.cluster.hierarchy import dendrogram, linkage
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from scipy.spatial.distance import squareform
 
 from project_panaroma import Stitcher
@@ -157,13 +157,7 @@ stitcher = StitcherWithRecommender()
 stitcher.input_dir = "data/gallery_of_3s"
 stitcher.output_dir = "data/gallery_of_3s_outputs"
 stitcher.plot = False
-# stitcher = StitcherWithRecommender(
-#     input_dir="data/hostel_room_sequence",
-#     output_dir="data/outputs",
-#     feature_detector="SIFT",
-#     matcher_type="BF",
-#     plot=True,
-# )
+
 stitcher.read_input_dir()
 stitcher.detect_keypoints_and_descriptors()
 recommended_image_groups = stitcher.recommend_images(
