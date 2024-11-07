@@ -2,6 +2,7 @@ import logging
 
 import seaborn as sns
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 import cv2
 import matplotlib.pyplot as plt
@@ -12,6 +13,7 @@ from scipy.spatial.distance import squareform
 from project_panaroma import Stitcher
 
 logging.basicConfig(level=logging.INFO)
+
 
 
 class HierarchicalClustering:
@@ -54,25 +56,6 @@ class HierarchicalClustering:
         # Compute the average linkage distance between two clusters
         distances = [self.distances[i][j] for i in cluster1 for j in cluster2]
         return np.mean(distances)
-    
-    def plot_pca_feature_space(self, distance_matrix):
-        # Apply PCA to reduce the distance matrix to 2D
-        pca = PCA(n_components=2)
-        pca_result = pca.fit_transform(distance_matrix)
-
-        # Plot the 2D feature space
-        plt.figure(figsize=(10, 8))
-        plt.scatter(pca_result[:, 0], pca_result[:, 1], s=100)
-
-        # Label each point with its corresponding image index
-        for i in range(pca_result.shape[0]):
-            plt.text(pca_result[i, 0], pca_result[i, 1], f"Image {i+1}",
-                     fontsize=12, ha="center")
-
-        plt.title("PCA of Feature Space (2D)")
-        plt.xlabel("PCA Component 1")
-        plt.ylabel("PCA Component 2")
-        plt.show()
 
 
 class StitcherWithRecommender(Stitcher):
@@ -170,9 +153,12 @@ class StitcherWithRecommender(Stitcher):
         hc = HierarchicalClustering(similarity_matrix)
         clusters = hc.fit(num_clusters=num_clusters)
         recommendations = []
+        self.reccomended_clusters =[]
         for idx, cluster in enumerate(clusters):
+            this_cluster = [i for i in cluster]
             print(f"Cluster {idx + 1}: {[i + 1 for i in cluster]}")
             recommendations.append([self.input_images[i] for i in cluster])
+            self.reccomended_clusters.append(this_cluster)
         return recommendations
 
     def stitch_recommended_images(self, recommended_image_groups):
@@ -182,6 +168,143 @@ class StitcherWithRecommender(Stitcher):
             self.detect_keypoints_and_descriptors()
             self.stitch3_with_post()
             print(f"Stitched panorama for cluster {idx + 1} saved.")
+            
+            
+    # More methods feature engineering
+    def get_consolidated_feature_vectors(self):
+        """Consolidates feature vectors, flattening and concatenating descriptors for each image."""
+        feature_vectors = []
+
+        for _, descriptors in self.feature_points_and_descriptors:
+            if descriptors is not None:
+                # Truncate or pad to ensure `sift_nfeatures` descriptors
+                if descriptors.shape[0] >= self.sift_nfeatures:
+                    truncated_descriptors = descriptors[:self.sift_nfeatures]
+                else:
+                    padded_descriptors = np.zeros((self.sift_nfeatures, descriptors.shape[1]))
+                    padded_descriptors[:descriptors.shape[0], :] = descriptors
+                    truncated_descriptors = padded_descriptors
+
+                # Flatten descriptors for this image and add to feature vectors
+                flattened_descriptors = truncated_descriptors.flatten()
+                feature_vectors.append(flattened_descriptors)
+
+        # Stack the flattened feature vectors from all images into a 2D array
+        consolidated_features = np.vstack(feature_vectors)
+        return consolidated_features
+        
+    def perform_pca(self, n_components=2):
+        """Performs PCA on the consolidated feature vectors with a specified number of components."""
+        features = self.get_consolidated_feature_vectors()
+        pca = PCA(n_components=n_components)
+        pca_result = pca.fit_transform(features)
+        return pca_result
+
+    def plot_pca_feature_space(self, kmeans_labels=None):
+        """
+        Plots the 2D PCA projection of image feature vectors.
+        
+        Parameters:
+        - kmeans_labels: Optional K-means cluster labels to color-code the plot.
+        """
+        # Perform PCA with 2 components for 2D visualization
+        pca_result = self.perform_pca(n_components=2)
+
+        # Define colors for each cluster if K-means labels are provided
+        if kmeans_labels is not None:
+            unique_labels = set(kmeans_labels)
+            colors = plt.cm.get_cmap("tab10", len(unique_labels))  # Use color map for distinct colors
+        else:
+            colors = plt.cm.get_cmap("tab10", 1)  # Default color if no labels are provided
+
+        # Plot the 2D feature space
+        plt.figure(figsize=(10, 8))
+
+        for i in range(pca_result.shape[0]):
+            label = kmeans_labels[i] if kmeans_labels is not None else 0
+            color = colors(label)
+            plt.scatter(pca_result[i, 0], pca_result[i, 1], s=100, color=color, alpha=0.7)
+            plt.text(pca_result[i, 0], pca_result[i, 1], f"Image {i+1}",
+                     fontsize=9, ha="center", va="center")
+
+        plt.title("2D PCA of Image Feature Space")
+        plt.xlabel("PCA Component 1")
+        plt.ylabel("PCA Component 2")
+        plt.show()
+
+    def apply_kmeans(self, num_components_pca = 10, num_clusters=5):
+        """Applies K-means clustering on the consolidated feature vectors and returns cluster labels."""
+        features = self.get_consolidated_feature_vectors()
+        
+        pca_features = self.perform_pca(n_components=num_components_pca)
+        kmeans = KMeans(n_clusters=num_clusters, random_state=42)
+        cluster_labels = kmeans.fit_predict(pca_features)
+        return cluster_labels
+    
+    def plot_kmeans_elbow_curve(self, max_k=10, num_components_pca=10):
+        """
+        Plots the elbow curve for K-means clustering by varying the number of clusters.
+
+        Parameters:
+        - max_k: Maximum number of clusters to test (default is 10).
+        - num_components_pca: Number of PCA components to use for dimensionality reduction before K-means.
+        """
+        features = self.get_consolidated_feature_vectors()
+        pca_features = self.perform_pca(n_components=num_components_pca)
+
+        # Calculate inertia for different values of k
+        inertia_values = []
+        k_values = range(1, max_k + 1)
+        
+        for k in k_values:
+            kmeans = KMeans(n_clusters=k, random_state=42)
+            kmeans.fit(pca_features)
+            inertia_values.append(kmeans.inertia_)
+            logging.info(f"K={k}, Inertia={kmeans.inertia_}")
+
+        # Plot the elbow curve
+        plt.figure(figsize=(10, 6))
+        plt.plot(k_values, inertia_values, marker='o')
+        plt.title("Elbow Curve for K-means Clustering")
+        plt.xlabel("Number of Clusters (k)")
+        plt.ylabel("Inertia (Sum of Squared Distances)")
+        plt.xticks(k_values)
+        plt.grid(True)
+        plt.show()
+    
+    def show_clustered_images(self, clusters):
+        """
+        Displays images that were clustered together based on the clustering labels.
+
+        Parameters:
+        - clusters: A list of lists, where each inner list contains the indices of images in a cluster.
+                    This format supports both K-means (using cluster labels) and hierarchical clustering.
+        """
+        num_clusters = len(clusters)
+        for cluster_id, cluster_indices in enumerate(clusters):
+            cluster_images = [self.input_images[i] for i in cluster_indices]
+
+            # Determine the grid size based on the number of images in the cluster
+            n_images = len(cluster_images)
+            cols = min(n_images, 5)  # Limit to 5 images per row
+            rows = (n_images // cols) + (n_images % cols > 0) if cols != 0 else 1
+            
+            if cols == 0:
+                continue
+            fig, axs = plt.subplots(rows, cols, figsize=(15, 3 * rows))
+            fig.suptitle(f"Cluster {cluster_id + 1}", fontsize=16)
+            axs = axs.flatten() if n_images > 1 else [axs]  # Flatten axs for easy indexing
+
+            for idx, img in enumerate(cluster_images):
+                axs[idx].imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                axs[idx].axis('off')
+
+            # Hide any unused subplots
+            for j in range(n_images, rows * cols):
+                axs[j].axis('off')
+
+            plt.tight_layout()
+            plt.show()
 
 
 # Assuming `stitcher` is an instance of the Stitcher class
