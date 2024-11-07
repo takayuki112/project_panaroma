@@ -1,5 +1,5 @@
 import logging
-
+import seaborn as sns
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -72,6 +72,16 @@ class StitcherWithRecommender(Stitcher):
 
         return similarity_matrix
 
+    def plot_distance_matrix_heatmap(self, distance_matrix):
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(distance_matrix, annot=True, fmt=".2f", cmap="coolwarm", cbar=True,
+                    xticklabels=[f"Image {i+1}" for i in range(distance_matrix.shape[0])],
+                    yticklabels=[f"Image {i+1}" for i in range(distance_matrix.shape[0])])
+        plt.title("Distance Matrix Heatmap")
+        plt.xlabel("Images")
+        plt.ylabel("Images")
+        plt.show()
+    
     def generate_dendrogram(self, similarity_matrix):
         # Convert the similarity matrix to a distance matrix
         epsilon = 1e-5  # Small value to prevent division by zero
@@ -160,7 +170,27 @@ stitcher.plot = False
 
 stitcher.read_input_dir()
 stitcher.detect_keypoints_and_descriptors()
+
+
+# Compute the similarity matrix for the images
+similarity_matrix = stitcher.compute_pairwise_similarities()
+
+# Create an instance of HierarchicalClustering to convert similarity to distance
+hc = HierarchicalClustering(similarity_matrix)
+distance_matrix = hc._convert_similarity_to_distance(similarity_matrix)
+
+# Plot the heatmap of the initial distance matrix
+stitcher.plot_distance_matrix_heatmap(distance_matrix)
+
 recommended_image_groups = stitcher.recommend_images(
     num_clusters=len(stitcher.input_images) // 3
 )
 stitcher.stitch_recommended_images(recommended_image_groups)
+similarity_matrix = stitcher.compute_pairwise_similarities()
+
+hc = HierarchicalClustering(similarity_matrix)
+
+distance_matrix = hc._convert_similarity_to_distance(similarity_matrix)
+
+stitcher.plot_distance_matrix_heatmap(distance_matrix)
+

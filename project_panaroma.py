@@ -310,7 +310,7 @@ class Stitcher():
             img2 = self.input_images[i + 1]
             kp1, des1 = self.feature_points_and_descriptors[i]
             kp2, des2 = self.feature_points_and_descriptors[i + 1]
-            self.match_two_images(img1, img2, kp1, des1, kp2, des2, ransac=False)
+            self.match_two_images(img1, img2, kp1, des1, kp2, des2, ransac=ransac)
 
     ## IMAGE ALIGNMENT AND STITCHING
 
