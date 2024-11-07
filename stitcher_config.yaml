@@ -1,29 +1,61 @@
+# Input and Output Directories
 input_dir: "data/stitch_test1"
 output_dir: "data/outputs"
-feature_detector_algo: "SIFT"
-matcher_type: "BF"
-plot: true
+
+# General Configuration
+feature_detector_algo: "SIFT"      
+matcher_type: "BF"                 
+plot: true                         
 
 # SIFT Parameters
 sift:
   nfeatures: 0
-  nOctaveLayers: 3
-  contrastThreshold: 0.04
-  edgeThreshold: 10
-  sigma: 1.6
+  nOctaveLayers: 3                 # Controls scale space detail
+  contrastThreshold: 0.04          # Filters out weak features; higher = fewer keypoints
+  edgeThreshold: 10                # Filters out edge-like features; higher = fewer keypoints
+  sigma: 1.6                       # Gaussian smoothing parameter; controls feature size
 
 # ORB Parameters
 orb:
   nfeatures: 0
-  scaleFactor: 1.2
-  nlevels: 8
-  edgeThreshold: 31
+  scaleFactor: 1.2                 # Scale factor between pyramid levels
+  nlevels: 8                       # Number of pyramid levels
+  edgeThreshold: 31                # Border size for feature detection
   firstLevel: 0
-  WTA_K: 2
-  scoreType: "ORB_HARRIS_SCORE"  # Use "ORB_HARRIS_SCORE" or "ORB_FAST_SCORE"
-  patchSize: 31
-  fastThreshold: 20
+  WTA_K: 2                         # Number of points for orientation test
+  scoreType: "ORB_HARRIS_SCORE"    # "ORB_HARRIS_SCORE" or "ORB_FAST_SCORE"
+  patchSize: 31                    # Local area size for feature calculation
+  fastThreshold: 20                # FAST corner detection threshold
 
 # Hyperparameters
-ratio_test_threshold: 0.5
-ransac_threshold: 5.0
+ratio_test_threshold: 0.5          # Ratio test threshold for filtering matches
+ransac_threshold: 5.0              # RANSAC threshold for homography estimation
+
+# BF Matcher Configuration
+bf:
+  norm_type: "NORM_L2"             # "NORM_L2" for SIFT, "NORM_HAMMING" for ORB
+  crossCheck: False                # Cross-check for mutual matches
+
+# FLANN Matcher Configuration (Only used if matcher_type is "FLANN")
+flann:
+  # algorithm: Determines the type of search algorithm to use in FLANN. Choose based on the descriptor type:
+  # - 1 (KDTree): Best for SIFT, SURF, or other floating-point descriptors. KDTree is optimized for continuous descriptors.
+  # - 6 (LSH - Locality Sensitive Hashing): Use for binary descriptors like ORB. LSH is optimized for binary features.
+  algorithm: 1  # Options: 1 for KDTree (e.g., SIFT), 6 for LSH (e.g., ORB)
+
+  # trees: The number of trees to use in the KDTree index (only for KDTree algorithm).
+  # A higher number of trees can increase accuracy but may slow down the matching. Typically 4-5 trees work well.
+  # This parameter is ignored if using LSH (algorithm=6).
+  trees: 5  # Common setting is 5, only relevant if algorithm is set to KDTree (1)
+
+  # LSH-specific parameters (used only if algorithm=6 for binary descriptors like ORB):
+  # table_number: Number of hash tables in the LSH index. Higher values increase accuracy but may slow down matching.
+  # key_size: Size of the hash keys in bits. Typically between 10-20, depending on the descriptor length.
+  # multi_probe_level: Controls the number of nearby buckets to search in LSH. A higher level increases accuracy but slows matching.
+  table_number: 6  # Only for LSH (algorithm=6)
+  key_size: 12     # Only for LSH (algorithm=6)
+  multi_probe_level: 1  # Only for LSH (algorithm=6)
+
+  # checks: Number of times to recurse through the index for a match. Higher values increase accuracy but also computation.
+  # This parameter applies to both KDTree and LSH algorithms.
+  checks: 50  # Commonly set to 50 for a good balance between speed and accuracy.                  # Number of recursions for accuracy

@@ -46,6 +46,11 @@ class Stitcher():
         
         self.orb_patchSize = orb_config.get("patchSize", 31)
         self.orb_fastThreshold = orb_config.get("fastThreshold", 20)
+        
+        # Matcher-specific parameters
+        self.bf_config = initial_config.get("bf", {"norm_type": "NORM_L2", "crossCheck": False})
+        self.flann_config = initial_config.get("flann", {"algorithm": 1, "trees": 5, "checks": 50})
+
 
         
 
@@ -222,20 +227,43 @@ class Stitcher():
     ## FEATURE MATCHING 
     
     def match_features(self, descriptors1, descriptors2):
-        
-        # Initialize matcher
+        # Initialize matcher based on configuration
         if self.matcher_type == "BF":
-            norm_type = cv2.NORM_L2 if self.feature_detector_algo == "SIFT" else cv2.NORM_HAMMING
-            self.matcher = cv2.BFMatcher(norm_type, crossCheck=False)
+            # Set BFMatcher parameters
+            norm_type = getattr(cv2, self.bf_config["norm_type"], cv2.NORM_L2)
+            cross_check = self.bf_config["crossCheck"]
+            self.matcher = cv2.BFMatcher(norm_type, crossCheck=cross_check)
+
         elif self.matcher_type == "FLANN":
-            index_params = dict(algorithm=1, trees=5)
-            search_params = dict(checks=50)
+            # Configure FLANN parameters based on descriptor type
+            if self.feature_detector_algo == "SIFT":
+                # Use KDTree for floating-point descriptors like SIFT
+                index_params = dict(algorithm=1, trees=self.flann_config.get("trees", 5))
+            elif self.feature_detector_algo == "ORB":
+                # Use LSH for binary descriptors like ORB
+                index_params = dict(
+                    algorithm=6,  # LSH algorithm
+                    table_number=self.flann_config.get("table_number", 6),
+                    key_size=self.flann_config.get("key_size", 12),
+                    multi_probe_level=self.flann_config.get("multi_probe_level", 1)
+                )
+            else:
+                raise ValueError("Invalid feature detector for FLANN. Use 'SIFT' or 'ORB'.")
+
+            # Common search params for FLANN
+            search_params = dict(checks=self.flann_config.get("checks", 50))
+
+            # Initialize the FLANN matcher
             self.matcher = cv2.FlannBasedMatcher(index_params, search_params)
+
         else:
             raise ValueError("Invalid matcher type. Use 'BF' or 'FLANN'.")
-        
+
+        # Perform knnMatch
         matches = self.matcher.knnMatch(descriptors1, descriptors2, k=2)
         return matches
+
+
     
     def ratio_test(self, matches):
         good_matches = [m for m, n in matches if m.distance < self.ratio_test_threshold * n.distance]
@@ -460,7 +488,6 @@ class Stitcher():
 
     
     def apply_clahe(self, image):
-        # Convert to LAB color space
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         
