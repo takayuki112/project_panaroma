@@ -1,5 +1,8 @@
 import logging
+
 import seaborn as sns
+from sklearn.decomposition import PCA
+
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -51,6 +54,25 @@ class HierarchicalClustering:
         # Compute the average linkage distance between two clusters
         distances = [self.distances[i][j] for i in cluster1 for j in cluster2]
         return np.mean(distances)
+    
+    def plot_pca_feature_space(self, distance_matrix):
+        # Apply PCA to reduce the distance matrix to 2D
+        pca = PCA(n_components=2)
+        pca_result = pca.fit_transform(distance_matrix)
+
+        # Plot the 2D feature space
+        plt.figure(figsize=(10, 8))
+        plt.scatter(pca_result[:, 0], pca_result[:, 1], s=100)
+
+        # Label each point with its corresponding image index
+        for i in range(pca_result.shape[0]):
+            plt.text(pca_result[i, 0], pca_result[i, 1], f"Image {i+1}",
+                     fontsize=12, ha="center")
+
+        plt.title("PCA of Feature Space (2D)")
+        plt.xlabel("PCA Component 1")
+        plt.ylabel("PCA Component 2")
+        plt.show()
 
 
 class StitcherWithRecommender(Stitcher):
