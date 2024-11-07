@@ -50,6 +50,9 @@ class Stitcher():
         
 
     def read_input_dir(self, right_to_left=False):
+        
+        self.input_images = []
+        
         image_extensions = {".jpeg", ".jpg", ".png"}
         
         # Filter and sort files by numeric prefix
@@ -317,6 +320,7 @@ class Stitcher():
         else:
             result_img = cv2.warpPerspective(warp_img, translation_matrix @ H, (x_max - x_min, y_max - y_min))
             result_img[translation_dist[1]:h1 + translation_dist[1], translation_dist[0]:w1 + translation_dist[0]] = base_img
+            
 
         if self.plot:
             plt.figure(figsize=(15, 10))
@@ -433,5 +437,156 @@ class Stitcher():
         print(f"Preprocessed Stitched image saved to {self.output_dir}")
         
         return stitched_image
+    
+    ## POST-PROCESSING 
+    
+    def color_correct(self, source, template):
+        source_lab = cv2.cvtColor(source, cv2.COLOR_BGR2LAB)
+        template_lab = cv2.cvtColor(template, cv2.COLOR_BGR2LAB)
+        
+        # Split the LAB channels
+        l_source, a_source, b_source = cv2.split(source_lab)
+        l_template, a_template, b_template = cv2.split(template_lab)
+        
+        # Apply histogram equalization only to the L channel
+        l_source_equalized = cv2.equalizeHist(l_source)
+        
+        # Merge the equalized L channel with the original A and B channels
+        matched = cv2.merge((l_source_equalized, a_source, b_source))
+        
+        # Convert back to BGR color space
+        corrected_image = cv2.cvtColor(matched, cv2.COLOR_LAB2BGR)
+        return corrected_image
+
+    
+    def apply_clahe(self, image):
+        # Convert to LAB color space
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # Apply CLAHE to the L channel
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        
+        # Merge the CLAHE enhanced L channel back with a and b channels
+        lab = cv2.merge((l, a, b))
+        corrected = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        return corrected
+
+
+    def crop_black_regions(self, image, black_chunk_ratio=0.2):
+        # Convert the image to grayscale for easier black region detection
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Define the threshold for considering a pixel "black" (e.g., pixel intensity < 10)
+        black_pixel_threshold = 10
+        
+        # Calculate the number of consecutive black pixels required
+        min_black_chunk_length = int(gray.shape[1] * black_chunk_ratio)
+        
+        # Find rows that contain fewer than the threshold of consecutive black pixels
+        non_black_rows = []
+        for i in range(gray.shape[0]):
+            row = gray[i, :]
+            black_streaks = 0
+            max_black_streak = 0
+            
+            for pixel in row:
+                if pixel < black_pixel_threshold:
+                    black_streaks += 1
+                else:
+                    max_black_streak = max(max_black_streak, black_streaks)
+                    black_streaks = 0
+            
+            # Update max streak at end of row if streak continues to end
+            max_black_streak = max(max_black_streak, black_streaks)
+            
+            # Add row to non-black rows if black streak is below threshold
+            if max_black_streak < min_black_chunk_length:
+                non_black_rows.append(i)
+        
+        # Determine cropping boundaries
+        if non_black_rows:
+            top_row = non_black_rows[0]
+            bottom_row = non_black_rows[-1] + 1  # +1 to include the last valid row
+            
+            # Crop the image
+            cropped_image = image[top_row:bottom_row, :]
+        else:
+            cropped_image = image  # No significant black region found, return the original image
+        
+        if self.plot:
+            plt.figure(figsize=(10, 7))
+            plt.imshow(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
+            plt.title("Cropped Stitched Image")
+            plt.axis("off")
+            plt.show()
+        
+        return cropped_image
+
+
+    def stitch3_with_post(self, color_correct = True):
+        """
+        Run self.read_input_dir() & self.detect_keypoints_and_descriptors(custom_input_img = None) before calling this method.
+        This method requires exactly 3 input images.
+        """
+        if len(self.input_images) != 3:
+            raise ValueError("stitch3 method requires exactly 3 input images.")
+
+        img1 = self.input_images[0]
+        img2 = self.input_images[1]
+        img3 = self.input_images[2]
+
+        kp1, des1 = self.feature_points_and_descriptors[0]
+        kp2, des2 = self.feature_points_and_descriptors[1]
+        kp3, des3 = self.feature_points_and_descriptors[2]
+
+        # Match features between img1 and img2
+        matches12 = self.match_features(des1, des2)
+        good_matches12 = self.ratio_test(matches12)
+        H12, inliers12 = self.ransac_homography(kp1, kp2, good_matches12)
+        warped_img1 = self.warp_and_stitch(img1, img2, H12, backward_warp=True)  
+
+        if color_correct:
+            warped_img1 = self.color_correct(warped_img1, img2)
+            warped_img1 = self.apply_clahe(warped_img1)
+        
+        # Match features between img3 and img2
+        matches32 = self.match_features(des3, des2)
+        good_matches32 = self.ratio_test(matches32)
+        H32, inliers32 = self.ransac_homography(kp3, kp2, good_matches32)
+        warped_img3 = self.warp_and_stitch(img3, img2, H32, backward_warp=True)  
+
+        if color_correct:
+            warped_img3 = self.color_correct(warped_img3, warped_img1)
+            warped_img3 = self.apply_clahe(warped_img3)
+        
+        
+        # Detect and match features between the warped images for final blending
+        kp_warped1, des_warped1 = self.detect_keypoints_and_descriptors(custom_input_image=warped_img1)
+        kp_warped3, des_warped3 = self.detect_keypoints_and_descriptors(custom_input_image=warped_img3)
+        matches_warped = self.match_features(des_warped1, des_warped3)
+        good_matches_warped = self.ratio_test(matches_warped)
+        H_warped, inliers_warped = self.ransac_homography(kp_warped1, kp_warped3, good_matches_warped)
+
+        # Final stitch of warped images
+        stitched_image = self.warp_and_stitch(warped_img1, warped_img3, H_warped)
+
+        stitched_image = self.crop_black_regions(stitched_image)
+        
+        if self.plot:
+            plt.figure(figsize=(18, 18))
+            plt.imshow(cv2.cvtColor(stitched_image, cv2.COLOR_BGR2RGB))
+            plt.title("Stitched Image")
+            plt.axis("off")
+            plt.show()
+            
+        # Save the final stitched image
+        cv2.imwrite(os.path.join(self.output_dir, "stitched_image.jpg"), stitched_image)
+        print(f"Preprocessed Stitched image saved to {self.output_dir}")
+        
+        return stitched_image
+    
+
 
     
