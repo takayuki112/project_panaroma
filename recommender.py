@@ -59,6 +59,7 @@ class HierarchicalClustering:
 
 
 class StitcherWithRecommender(Stitcher):
+    
     def compute_pairwise_similarities(self):
         num_images = len(self.input_images)
         similarity_matrix = np.zeros((num_images, num_images))
@@ -223,9 +224,9 @@ class StitcherWithRecommender(Stitcher):
         for i in range(pca_result.shape[0]):
             label = kmeans_labels[i] if kmeans_labels is not None else 0
             color = colors(label)
-            plt.scatter(pca_result[i, 0], pca_result[i, 1], s=100, color=color, alpha=0.7)
-            plt.text(pca_result[i, 0], pca_result[i, 1], f"Image {i+1}",
-                     fontsize=9, ha="center", va="center")
+            plt.scatter(pca_result[i, 0], pca_result[i, 1], s=130, color=color, alpha=0.7)
+            plt.text(pca_result[i, 0], pca_result[i, 1], f"{i+1}",
+                     fontsize=9, ha="center", va="center", color= 'white')
 
         plt.title("2D PCA of Image Feature Space")
         plt.xlabel("PCA Component 1")
@@ -306,36 +307,36 @@ class StitcherWithRecommender(Stitcher):
             plt.tight_layout()
             plt.show()
 
+if __name__ == "__main__":
+    # Assuming `stitcher` is an instance of the Stitcher class
+    stitcher = StitcherWithRecommender()
+    stitcher.input_dir = "data/gallery_of_3s"
+    stitcher.output_dir = "data/gallery_of_3s_outputs"
+    stitcher.plot = False
 
-# Assuming `stitcher` is an instance of the Stitcher class
-stitcher = StitcherWithRecommender()
-stitcher.input_dir = "data/gallery_of_3s"
-stitcher.output_dir = "data/gallery_of_3s_outputs"
-stitcher.plot = False
-
-stitcher.read_input_dir()
-stitcher.detect_keypoints_and_descriptors()
+    stitcher.read_input_dir()
+    stitcher.detect_keypoints_and_descriptors()
 
 
-# Compute the similarity matrix for the images
-similarity_matrix = stitcher.compute_pairwise_similarities()
+    # Compute the similarity matrix for the images
+    similarity_matrix = stitcher.compute_pairwise_similarities()
 
-# Create an instance of HierarchicalClustering to convert similarity to distance
-hc = HierarchicalClustering(similarity_matrix)
-distance_matrix = hc._convert_similarity_to_distance(similarity_matrix)
+    # Create an instance of HierarchicalClustering to convert similarity to distance
+    hc = HierarchicalClustering(similarity_matrix)
+    distance_matrix = hc._convert_similarity_to_distance(similarity_matrix)
 
-# Plot the heatmap of the initial distance matrix
-stitcher.plot_distance_matrix_heatmap(distance_matrix)
+    # Plot the heatmap of the initial distance matrix
+    stitcher.plot_distance_matrix_heatmap(distance_matrix)
 
-recommended_image_groups = stitcher.recommend_images(
-    num_clusters=len(stitcher.input_images) // 3
-)
-stitcher.stitch_recommended_images(recommended_image_groups)
-similarity_matrix = stitcher.compute_pairwise_similarities()
+    recommended_image_groups = stitcher.recommend_images(
+        num_clusters=len(stitcher.input_images) // 3
+    )
+    stitcher.stitch_recommended_images(recommended_image_groups)
+    similarity_matrix = stitcher.compute_pairwise_similarities()
 
-hc = HierarchicalClustering(similarity_matrix)
+    hc = HierarchicalClustering(similarity_matrix)
 
-distance_matrix = hc._convert_similarity_to_distance(similarity_matrix)
+    distance_matrix = hc._convert_similarity_to_distance(similarity_matrix)
 
-stitcher.plot_distance_matrix_heatmap(distance_matrix)
+    stitcher.plot_distance_matrix_heatmap(distance_matrix)
 
