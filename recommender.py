@@ -287,12 +287,12 @@ class StitcherWithRecommender(Stitcher):
 
             # Determine the grid size based on the number of images in the cluster
             n_images = len(cluster_images)
-            cols = min(n_images, 5)  # Limit to 5 images per row
+            cols = min(n_images, 3)  # Limit to 5 images per row
             rows = (n_images // cols) + (n_images % cols > 0) if cols != 0 else 1
             
             if cols == 0:
                 continue
-            fig, axs = plt.subplots(rows, cols, figsize=(15, 3 * rows))
+            fig, axs = plt.subplots(rows, cols, figsize=(10, 3 * rows))
             fig.suptitle(f"Cluster {cluster_id + 1}", fontsize=16)
             axs = axs.flatten() if n_images > 1 else [axs]  # Flatten axs for easy indexing
 
